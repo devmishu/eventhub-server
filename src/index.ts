@@ -94,8 +94,25 @@ async function run() {
       }
     });
 
-    // GET /events/:id
+   
+    app.get("/api/events/featured", async (req: Request, res: Response) => {
+      try {
+        const eventsData = await events.find().limit(8).toArray();
 
+        res.status(200).send({
+          success: true,
+          message: "Featured events fetched successfully",
+          data: eventsData,
+        });
+      } catch (error: any) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch featured events",
+          error: error.message,
+        });
+      }
+    });
+  
     // get events by id
     app.get("/api/events/:id", async (req: Request, res: Response) => {
       try {
