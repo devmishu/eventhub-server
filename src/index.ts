@@ -165,6 +165,99 @@ async function run() {
       }
     });
 
+    app.get("/api/events/:id", async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        if (typeof id !== "string") {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid event id",
+          });
+        }
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid ObjectId",
+          });
+        }
+
+        const query = {
+          _id: new ObjectId(id),
+        };
+
+        const event = await events.findOne(query);
+
+        if (!event) {
+          return res.status(404).send({
+            success: false,
+            message: "Event not found",
+          });
+        }
+
+        return res.status(200).send({
+          success: true,
+          message: "Event fetched successfully",
+          data: event,
+        });
+      } catch (error) {
+        if (error instanceof Error) {
+          return res.status(500).send({
+            success: false,
+            message: "Failed to fetch event",
+            error: error.message,
+          });
+        }
+
+        return res.status(500).send({
+          success: false,
+          message: "Unknown error occurred",
+        });
+      }
+    });
+
+    app.get("/api/events/user/:userId", async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    if (typeof userId !== "string") {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid user id",
+      });
+    }
+
+    const query = {
+      userId,
+    };
+
+    const userEvents = await events.find(query).toArray();
+
+    return res.status(200).send({
+      success: true,
+      message: "User events fetched successfully",
+      data: userEvents,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(500).send({
+        success: false,
+        message: "Failed to fetch user events",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).send({
+      success: false,
+      message: "Unknown error occurred",
+    });
+  }
+});
+
+
+
+
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
