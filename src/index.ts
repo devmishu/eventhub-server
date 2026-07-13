@@ -6,7 +6,7 @@
  */
 
 import dns from "node:dns/promises";
-import express, { Request, Response } from "express";
+import express, { Request, Response,NextFunction } from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
@@ -42,17 +42,80 @@ interface EventData {
   date: string;
   priority: string;
   imageUrl: string;
+  category: string;
+  location: string;
 }
 async function run() {
   const db = client.db("eventHub");
   const events = db.collection("events");
+  const sessions = db.collection('session');
+  const users = db.collection('user');
+
+
+
+
+interface CustomRequest extends Request {
+  user?: any;
+}
+
+ const verifyToken = async (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction
+): Promise<Response | void> => {
+  const header = req.headers.authorization;
+  if (!header) {
+    return res.status(401).send({
+      message: "Unauthorized access", 
+    });
+  }
+
+  const token = header.split(" ")[1];
+
+
+
+  if (!token) {
+    return res.status(401).send({
+      message: "Unauthorized access",
+    });
+  }
+
+  
+
+  const query = { token: token };
+  const session = await sessions.findOne(query);
+
+  const userId = session?.userId;
+
+  if (!userId) {
+    return res.status(401).send({
+      message: "Unauthorized access",
+    });
+  }
+
+  const userQuery = {
+    _id: userId,
+  };
+  const user = await users.findOne(userQuery);
+
+  if (!user) {
+    return res.status(401).send({
+      message: "Unauthorized access",
+    });
+  }
+
+  req.user = user;
+
+  next();
+};
+  
 
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
     // post one events
-    app.post("/api/events", async (req: Request, res: Response) => {
+    app.post("/api/events",verifyToken, async (req: Request, res: Response) => {
       try {
         const eventData: EventData = req.body;
 
@@ -63,7 +126,7 @@ async function run() {
           message: "Event added successfully",
           insertedId: result.insertedId,
         });
-        console.log(result);
+        
       } catch (error: any) {
         console.log(error);
 
@@ -75,26 +138,89 @@ async function run() {
       }
     });
 
-    // get all events
-    app.get("/api/events", async (req: Request, res: Response) => {
-      try {
-        const eventsData = await events.find().toArray();
 
-        res.status(200).send({
-          success: true,
-          message: "Events fetched successfully",
-          data: eventsData,
-        });
-      } catch (error: any) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to fetch events",
-          error: error.message,
-        });
-      }
-    });
+    // get all events
+app.get("/api/events", async (req: Request, res: Response) => {
+  try {
+    const { search, category, location, sortBy, page, itemsPerPage } = req.query;
+
+  
+    let query: Record<string, any> = {};
+
+    
+    if (search && typeof search === "string") {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { shortDescription: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    
+    if (category && typeof category === "string" && category !== "All Categories") {
+      query.category = {
+        $regex: `^${category.trim()}$`,
+        $options: "i",
+      };
+    }
+
+
+  
+    if (location && typeof location === "string" && location !== "All Locations") {
+      query.location = {
+        $regex: `^${location.trim()}$`,
+        $options: "i",
+      };
+    }
 
    
+let sortOption: Record<string, any> = { _id: -1 }; 
+
+if (sortBy === "Newest") {
+  sortOption = { date: -1 }; 
+} else if (sortBy === "Oldest") {
+  
+  sortOption = { date: 1 };  
+} else if (sortBy === "PriceLowToHigh") {
+  sortOption = { price: 1 }; 
+} else if (sortBy === "PriceHighToLow") {
+  sortOption = { price: -1 }; 
+}
+
+    
+    const total = await events.countDocuments(query);
+    
+    const currentPage = parseInt(page as string) || 1;
+    const limit = parseInt(itemsPerPage as string) || 8;
+    const skip = (currentPage - 1) * limit;
+
+  
+    const result = await events
+      .find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+ 
+    res.status(200).send({
+      success: true,
+      message: "Events fetched successfully",
+      data: {
+        total,
+        result,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch events",
+      error: error.message,
+    });
+  }
+});
+
+
     app.get("/api/events/featured", async (req: Request, res: Response) => {
       try {
         const eventsData = await events.find().limit(8).toArray();
@@ -165,58 +291,7 @@ async function run() {
       }
     });
 
-    app.get("/api/events/:id", async (req: Request, res: Response) => {
-      try {
-        const { id } = req.params;
-        if (typeof id !== "string") {
-          return res.status(400).send({
-            success: false,
-            message: "Invalid event id",
-          });
-        }
-
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
-            success: false,
-            message: "Invalid ObjectId",
-          });
-        }
-
-        const query = {
-          _id: new ObjectId(id),
-        };
-
-        const event = await events.findOne(query);
-
-        if (!event) {
-          return res.status(404).send({
-            success: false,
-            message: "Event not found",
-          });
-        }
-
-        return res.status(200).send({
-          success: true,
-          message: "Event fetched successfully",
-          data: event,
-        });
-      } catch (error) {
-        if (error instanceof Error) {
-          return res.status(500).send({
-            success: false,
-            message: "Failed to fetch event",
-            error: error.message,
-          });
-        }
-
-        return res.status(500).send({
-          success: false,
-          message: "Unknown error occurred",
-        });
-      }
-    });
-
-    app.get("/api/events/user/:userId", async (req: Request, res: Response) => {
+    app.get("/api/events/user/:userId",verifyToken, async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -255,11 +330,63 @@ async function run() {
 });
 
 
+// delete event by id
+app.delete("/api/events/:id",verifyToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (typeof id !== "string") {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid event id",
+      });
+    }
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid ObjectId",
+      });
+    }
+
+    const query = {
+      _id: new ObjectId(id),
+    };
+
+    const result = await events.deleteOne(query);
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    return res.status(200).send({
+      success: true,
+      message: "Event deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(500).send({
+        success: false,
+        message: "Failed to delete event",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).send({
+      success: false,
+      message: "Unknown error occurred",
+    });
+  }
+});
 
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
     );
