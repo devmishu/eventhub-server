@@ -34,6 +34,9 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+
+client.connect(() => console.log("connecting to mongo db")).catch(console.log.dir)
+
 interface EventData {
   title: string;
   shortDescription: string;
@@ -45,7 +48,9 @@ interface EventData {
   category: string;
   location: string;
 }
-async function run() {
+
+// async function run() {
+
   const db = client.db("eventHub");
   const events = db.collection("events");
   const sessions = db.collection('session');
@@ -110,9 +115,9 @@ interface CustomRequest extends Request {
 };
   
 
-  try {
+  // try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+  //   await client.connect();
 
     // post one events
     app.post("/api/events",verifyToken, async (req: Request, res: Response) => {
@@ -383,19 +388,20 @@ app.delete("/api/events/:id",verifyToken, async (req: Request, res: Response) =>
   }
 });
 
+module.exports = app;
 
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!",
-    );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
-  }
-}
-run().catch(console.dir);
+//     console.log(
+//       "Pinged your deployment. You successfully connected to MongoDB!",
+//     );
+//   } finally {
+//     // Ensures that the client will close when you finish/error
+//     // await client.close();
+//   }
+// }
+// run().catch(console.dir);
 
 // Routes
 app.get("/", (req: Request, res: Response) => {
